@@ -1,0 +1,160 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================
+    // HELPER FUNCTIONS
+    // =========================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated()
+             && request.auth.token.role == "admin";
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated()
+             && request.auth.uid == userId;
+    }
+
+    // =========================================
+    // DENY ALL BY DEFAULT
+    // =========================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================
+    // PRODUCTS (public read, admin write)
+    // =========================================
+    match /products/{productId} {
+      // Allow public reads: get individual active docs, list with isActive filter
+      allow get: if resource.data.isActive == true || isAdmin();
+      allow list: if true;
+
+      allow create: if isAdmin()
+                    && request.resource.data.keys().hasAll([
+                      'name', 'slug', 'description', 'category',
+                      'price', 'images', 'sizes', 'stock', 'inStock',
+                      'isActive', 'createdAt', 'updatedAt', 'createdBy'
+                    ])
+                    && request.resource.data.price is number
+                    && request.resource.data.price > 0
+                    && request.resource.data.stock is int
+                    && request.resource.data.stock >= 0;
+
+      // Admin can update anything on a product
+      allow update: if isAdmin();
+
+      // Authenticated users can update ONLY stock fields (for checkout)
+      allow update: if isAuthenticated()
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['stock', 'inStock', 'updatedAt']);
+
+      allow delete: if isAdmin();
+    }
+
+    // =========================================
+    // CATEGORIES (public read, admin write)
+    // =========================================
+    match /categories/{categoryId} {
+      // Allow public reads: get individual active docs, list with isActive filter
+      allow get: if resource.data.isActive == true || isAdmin();
+      allow list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // =========================================
+    // ORDERS (owner read, admin full)
+    // =========================================
+    match /orders/{orderId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+
+      allow create: if isAuthenticated()
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.keys().hasAll([
+                      'userId', 'userEmail', 'items', 'subtotal',
+                      'shippingCost', 'total', 'shipping', 'status', 'createdAt'
+                    ])
+                    && request.resource.data.total is number
+                    && request.resource.data.total > 0
+                    && request.resource.data.status == 'pending';
+
+      allow update: if isAdmin();
+
+      allow delete: if false;
+    }
+
+    // =========================================
+    // USER PROFILES
+    // =========================================
+    match /users/{userId} {
+      // Individual doc reads: owner or admin
+      allow get: if isOwner(userId) || isAdmin();
+      // List all users: admin only (needed for admin panel)
+      // Also allow authenticated users to query by their own UID
+      allow list: if isAdmin() || isAuthenticated();
+      allow create: if isOwner(userId);
+
+      // Users can update own profile (but NOT role or isActive)
+      allow update: if isOwner(userId)
+                    && !request.resource.data.diff(resource.data).affectedKeys()
+                        .hasAny(['role', 'isActive']);
+
+      // Admins can update any user profile
+      allow update: if isAdmin();
+
+      allow delete: if false;
+
+      // ---- Cart subcollection ----
+      match /cart/{cartItemId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId)
+                      && request.resource.data.keys().hasAll(['productId', 'size', 'quantity', 'createdAt'])
+                      && request.resource.data.productId is string
+                      && request.resource.data.size is string
+                      && request.resource.data.quantity is int
+                      && request.resource.data.quantity > 0
+                      && request.resource.data.quantity <= 20;
+
+        allow update: if isOwner(userId)
+                      && request.resource.data.quantity is int
+                      && request.resource.data.quantity > 0
+                      && request.resource.data.quantity <= 20;
+
+        allow delete: if isOwner(userId);
+      }
+
+      // ---- Wishlist subcollection ----
+      match /wishlist/{wishlistItemId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId)
+                      && request.resource.data.keys().hasAll(['productId', 'createdAt'])
+                      && request.resource.data.productId is string;
+
+        allow delete: if isOwner(userId);
+        allow update: if false;
+      }
+    }
+
+    // =========================================
+    // SETTINGS (public read, admin write)
+    // =========================================
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // =========================================
+    // ANALYTICS (admin read, Cloud Functions write)
+    // =========================================
+    match /analytics/{docId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+  }
+}

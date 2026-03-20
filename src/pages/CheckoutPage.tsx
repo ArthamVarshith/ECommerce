@@ -3,15 +3,15 @@ import { useNavigate, Link } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { db } from "@/integrations/firebase/client";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { useToast } from "@/hooks/use-toast";
+import { useSettings } from "@/contexts/SettingsContext";
+import { placeOrder } from "@/services/firebase/orderService";
+import { toast } from "sonner";
 import { motion } from "framer-motion";
 
 const CheckoutPage = () => {
   const { items: cartItems, subtotal: totalPrice, clearCart } = useCart();
   const { user } = useAuth();
-  const { toast } = useToast();
+  const { settings } = useSettings();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
@@ -60,6 +60,14 @@ const CheckoutPage = () => {
     );
   }
 
+  // Use settings from Firestore
+  const freeThreshold = settings.freeShippingThreshold;
+  const stdShippingCost = settings.standardShippingCost;
+  const shippingCost = totalPrice >= freeThreshold ? 0 : stdShippingCost;
+  const taxRate = settings.taxRate;
+  const taxAmount = totalPrice * (taxRate / 100);
+  const orderTotal = totalPrice + shippingCost + taxAmount;
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
@@ -69,44 +77,33 @@ const CheckoutPage = () => {
     setLoading(true);
 
     try {
-      const orderItems = cartItems.map((item) => ({
-        productId: item.product.id,
-        name: item.product.name,
-        size: item.size,
-        quantity: item.quantity,
-        price: item.product.price,
-      }));
-
-      await addDoc(collection(db, "orders"), {
-        userId: user.uid,
-        items: orderItems,
-        total: totalPrice,
-        shipping: {
+      await placeOrder(
+        user.uid,
+        user.email ?? "",
+        cartItems,
+        totalPrice,
+        shippingCost,
+        orderTotal,
+        {
           name: form.name,
           address: form.address,
           city: form.city,
           zip: form.zip,
           country: form.country,
-        },
-        createdAt: serverTimestamp(),
-      });
+        }
+      );
 
+      // Clear local cart state after successful atomic order
       clearCart();
-      toast({
-        title: "Order placed!",
-        description: "Thank you for your purchase.",
-      });
 
+      toast.success("Order placed! Thank you for your purchase.");
       navigate("/");
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to place order. Please try again.",
-        variant: "destructive",
-      });
+    } catch (error: any) {
+      console.error("[CheckoutPage] Failed to place order:", error);
+      toast.error(error?.message || "Failed to place order. Please try again.");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (
@@ -176,18 +173,25 @@ const CheckoutPage = () => {
               </span>
             </div>
 
-            <div className="flex justify-between font-body text-sm mb-6">
+            <div className="flex justify-between font-body text-sm mb-2">
               <span className="text-muted-foreground">Shipping</span>
               <span className="text-foreground">
-                {totalPrice >= 150 ? "Free" : "$12.00"}
+                {shippingCost === 0 ? "Free" : `$${shippingCost.toFixed(2)}`}
               </span>
             </div>
 
+            {taxRate > 0 && (
+              <div className="flex justify-between font-body text-sm mb-6">
+                <span className="text-muted-foreground">Tax ({taxRate}%)</span>
+                <span className="text-foreground">
+                  ${taxAmount.toFixed(2)}
+                </span>
+              </div>
+            )}
+
             <div className="flex justify-between font-display text-xl border-t border-border pt-4 mb-8">
               <span>Total</span>
-              <span>
-                ${(totalPrice + (totalPrice >= 150 ? 0 : 12)).toFixed(2)}
-              </span>
+              <span>${orderTotal.toFixed(2)}</span>
             </div>
 
             <button

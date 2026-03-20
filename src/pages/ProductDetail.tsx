@@ -1,22 +1,63 @@
 import { useParams, Link } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Layout from "@/components/layout/Layout";
 import ProductCard from "@/components/ProductCard";
-import { getProductById, getProductsByCategory } from "@/data/products";
+import { getProductById, getProductsByCategory } from "@/services/firebase/productService";
 import { useCart } from "@/contexts/CartContext";
 import { Star, Minus, Plus, Heart } from "lucide-react";
 import { motion } from "framer-motion";
 import { useWishlist } from "@/contexts/WishlistContext";
+import type { Product } from "@/types/product";
 
 const ProductDetail = () => {
   const { id } = useParams<{ id: string }>();
-  const product = getProductById(id || "");
   const { addToCart } = useCart();
   const { toggleWishlist, isInWishlist } = useWishlist();
   const [selectedSize, setSelectedSize] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [activeImage, setActiveImage] = useState(0);
+
+  const [product, setProduct] = useState<Product | null>(null);
+  const [related, setRelated] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      if (!id) {
+        setLoading(false);
+        return;
+      }
+      try {
+        setLoading(true);
+        const p = await getProductById(id);
+        setProduct(p);
+
+        if (p) {
+          const categoryProducts = await getProductsByCategory(p.category);
+          setRelated(categoryProducts.filter((rp) => rp.id !== p.id).slice(0, 4));
+        }
+      } catch (error) {
+        console.error("[ProductDetail] Failed to load product:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [id]);
+
   const wishlisted = product ? isInWishlist(product.id) : false;
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="container mx-auto px-4 py-20 text-center">
+          <div className="animate-pulse font-body text-sm text-muted-foreground">
+            Loading product...
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   if (!product) {
     return (
@@ -30,10 +71,6 @@ const ProductDetail = () => {
       </Layout>
     );
   }
-
-  const related = getProductsByCategory(product.category)
-    .filter((p) => p.id !== product.id)
-    .slice(0, 4);
 
   const handleAddToCart = () => {
     if (!selectedSize) return;
@@ -72,9 +109,8 @@ const ProductDetail = () => {
                   <button
                     key={i}
                     onClick={() => setActiveImage(i)}
-                    className={`w-20 h-24 bg-secondary overflow-hidden border-2 transition-colors ${
-                      activeImage === i ? "border-foreground" : "border-transparent"
-                    }`}
+                    className={`w-20 h-24 bg-secondary overflow-hidden border-2 transition-colors ${activeImage === i ? "border-foreground" : "border-transparent"
+                      }`}
                   >
                     <img src={img} alt="" className="w-full h-full object-cover" />
                   </button>
@@ -134,11 +170,10 @@ const ProductDetail = () => {
                   <button
                     key={size}
                     onClick={() => setSelectedSize(size)}
-                    className={`font-body text-sm px-5 py-2.5 border transition-colors ${
-                      selectedSize === size
-                        ? "bg-foreground text-background border-foreground"
-                        : "bg-transparent text-foreground border-border hover:border-foreground"
-                    }`}
+                    className={`font-body text-sm px-5 py-2.5 border transition-colors ${selectedSize === size
+                      ? "bg-foreground text-background border-foreground"
+                      : "bg-transparent text-foreground border-border hover:border-foreground"
+                      }`}
                   >
                     {size}
                   </button>
@@ -161,8 +196,9 @@ const ProductDetail = () => {
                 </button>
                 <span className="font-body text-sm w-12 text-center text-foreground">{quantity}</span>
                 <button
-                  onClick={() => setQuantity(quantity + 1)}
-                  className="p-3 text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setQuantity(Math.min(20, quantity + 1))}
+                  disabled={quantity >= 20}
+                  className="p-3 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30"
                 >
                   <Plus size={16} />
                 </button>
@@ -180,11 +216,10 @@ const ProductDetail = () => {
               </button>
               <button
                 onClick={() => toggleWishlist(product.id)}
-                className={`p-4 border transition-colors ${
-                  wishlisted
-                    ? "border-foreground text-foreground bg-foreground/5"
-                    : "border-border text-muted-foreground hover:text-foreground hover:border-foreground"
-                }`}
+                className={`p-4 border transition-colors ${wishlisted
+                  ? "border-foreground text-foreground bg-foreground/5"
+                  : "border-border text-muted-foreground hover:text-foreground hover:border-foreground"
+                  }`}
               >
                 <Heart size={18} className={wishlisted ? "fill-current" : ""} />
               </button>

@@ -1,8 +1,41 @@
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { categories } from "@/data/products";
+import { getActiveCategories } from "@/services/firebase/categoryService";
 import { motion } from "framer-motion";
+import type { Category } from "@/types/product";
 
 const CategoryShowcase = () => {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const cats = await getActiveCategories();
+        setCategories(cats);
+      } catch (error) {
+        console.error("[CategoryShowcase] Failed to load:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  if (loading) {
+    return (
+      <section className="py-20 lg:py-28">
+        <div className="container mx-auto px-4 lg:px-8 text-center">
+          <div className="animate-pulse font-body text-sm text-muted-foreground">
+            Loading categories...
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (categories.length === 0) return null;
+
   return (
     <section className="py-20 lg:py-28">
       <div className="container mx-auto px-4 lg:px-8">

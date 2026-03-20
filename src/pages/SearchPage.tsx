@@ -1,17 +1,35 @@
 import { useSearchParams } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Layout from "@/components/layout/Layout";
 import ProductCard from "@/components/ProductCard";
-import { products } from "@/data/products";
+import { getActiveProducts } from "@/services/firebase/productService";
+import type { Product } from "@/types/product";
 
 const SearchPage = () => {
   const [searchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
   const [sort, setSort] = useState("default");
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true);
+        const products = await getActiveProducts();
+        setAllProducts(products);
+      } catch (error) {
+        console.error("[SearchPage] Failed to load products:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
 
   const results = useMemo(() => {
     if (!query) return [];
-    let filtered = products.filter(
+    let filtered = allProducts.filter(
       (p) =>
         p.name.toLowerCase().includes(query.toLowerCase()) ||
         p.category.toLowerCase().includes(query.toLowerCase()) ||
@@ -20,7 +38,7 @@ const SearchPage = () => {
     if (sort === "price-asc") filtered.sort((a, b) => a.price - b.price);
     if (sort === "price-desc") filtered.sort((a, b) => b.price - a.price);
     return filtered;
-  }, [query, sort]);
+  }, [query, sort, allProducts]);
 
   return (
     <Layout>
@@ -29,7 +47,9 @@ const SearchPage = () => {
           {query ? `Results for "${query}"` : "Search"}
         </h1>
         <p className="font-body text-sm text-muted-foreground mb-12">
-          {results.length} {results.length === 1 ? "product" : "products"} found
+          {loading
+            ? "Searching..."
+            : `${results.length} ${results.length === 1 ? "product" : "products"} found`}
         </p>
 
         {results.length > 0 && (
@@ -52,7 +72,7 @@ const SearchPage = () => {
           ))}
         </div>
 
-        {query && results.length === 0 && (
+        {!loading && query && results.length === 0 && (
           <div className="text-center py-20">
             <p className="font-body text-muted-foreground">No products found. Try a different search term.</p>
           </div>

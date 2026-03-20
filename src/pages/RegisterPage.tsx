@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { getAuthErrorMessage } from "@/lib/firebaseErrors";
 import Layout from "@/components/layout/Layout";
 import { motion } from "framer-motion";
 import { sendEmailVerification } from "firebase/auth";
@@ -19,22 +20,33 @@ const RegisterPage = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    // Client-side password validation
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters long.");
+      return;
+    }
+
+    if (!/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
+      setError("Password must contain at least one uppercase letter and one number.");
+      return;
+    }
+
     setLoading(true);
 
     try {
       await signUp(email, password, fullName);
 
-      // Send verification email
       if (auth.currentUser) {
         await sendEmailVerification(auth.currentUser);
       }
 
       setSuccess(true);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(getAuthErrorMessage(err));
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   if (success) {
@@ -116,9 +128,12 @@ const RegisterPage = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                minLength={6}
+                minLength={8}
                 className="w-full bg-transparent border border-border px-4 py-3 font-body text-sm text-foreground focus:outline-none focus:border-foreground transition-colors"
               />
+              <p className="font-body text-xs text-muted-foreground mt-1">
+                Min 8 characters, at least 1 uppercase letter and 1 number.
+              </p>
             </div>
 
             <button

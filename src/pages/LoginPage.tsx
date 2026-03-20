@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { getAuthErrorMessage } from "@/lib/firebaseErrors";
 import Layout from "@/components/layout/Layout";
 import { motion } from "framer-motion";
 
@@ -13,19 +14,19 @@ const LoginPage = () => {
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setError("");
-  setLoading(true);
+    e.preventDefault();
+    setError("");
+    setLoading(true);
 
-  try {
-    await signIn(email, password);
-    navigate("/");
-  } catch (err: any) {
-    setError(err.message);
-  }
-
-  setLoading(false);
-};
+    try {
+      await signIn(email, password);
+      navigate("/");
+    } catch (err: unknown) {
+      setError(getAuthErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <Layout>

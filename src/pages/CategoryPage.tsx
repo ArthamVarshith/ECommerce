@@ -1,20 +1,47 @@
 import { useParams } from "react-router-dom";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Layout from "@/components/layout/Layout";
 import ProductCard from "@/components/ProductCard";
-import { getProductsByCategory, categories } from "@/data/products";
+import { getProductsByCategory as fetchProducts } from "@/services/firebase/productService";
+import { getCategoryBySlug } from "@/services/firebase/categoryService";
 import { motion } from "framer-motion";
+import type { Product, Category } from "@/types/product";
 
 type SortOption = "default" | "price-asc" | "price-desc" | "newest";
 
 const CategoryPage = () => {
   const { slug } = useParams<{ slug: string }>();
-  const category = categories.find((c) => c.slug === slug);
-  const allProducts = getProductsByCategory(slug || "");
+
+  const [category, setCategory] = useState<Category | null>(null);
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [sort, setSort] = useState<SortOption>("default");
   const [sizeFilter, setSizeFilter] = useState<string>("");
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 600]);
+
+  useEffect(() => {
+    const load = async () => {
+      if (!slug) {
+        setLoading(false);
+        return;
+      }
+      try {
+        setLoading(true);
+        const [cat, products] = await Promise.all([
+          getCategoryBySlug(slug),
+          fetchProducts(slug),
+        ]);
+        setCategory(cat);
+        setAllProducts(products);
+      } catch (error) {
+        console.error("[CategoryPage] Failed to load:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [slug]);
 
   const filtered = useMemo(() => {
     let result = [...allProducts];
@@ -27,6 +54,18 @@ const CategoryPage = () => {
     }
     return result;
   }, [allProducts, sort, sizeFilter, priceRange]);
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="container mx-auto px-4 py-20 text-center">
+          <div className="animate-pulse font-body text-sm text-muted-foreground">
+            Loading category...
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   if (!category) {
     return (

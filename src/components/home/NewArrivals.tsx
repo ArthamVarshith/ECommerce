@@ -1,9 +1,40 @@
-import { getNewArrivals } from "@/data/products";
+import { useState, useEffect } from "react";
+import { getNewArrivals } from "@/services/firebase/productService";
 import ProductCard from "@/components/ProductCard";
 import { motion } from "framer-motion";
+import type { Product } from "@/types/product";
 
 const NewArrivals = () => {
-  const newProducts = getNewArrivals();
+  const [newProducts, setNewProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const products = await getNewArrivals();
+        setNewProducts(products);
+      } catch (error) {
+        console.error("[NewArrivals] Failed to load:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  if (loading) {
+    return (
+      <section className="py-20 lg:py-28">
+        <div className="container mx-auto px-4 lg:px-8 text-center">
+          <div className="animate-pulse font-body text-sm text-muted-foreground">
+            Loading new arrivals...
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (newProducts.length === 0) return null;
 
   return (
     <section className="py-20 lg:py-28">

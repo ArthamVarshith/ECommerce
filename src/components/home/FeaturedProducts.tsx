@@ -1,9 +1,40 @@
-import { getFeaturedProducts } from "@/data/products";
+import { useState, useEffect } from "react";
+import { getFeaturedProducts } from "@/services/firebase/productService";
 import ProductCard from "@/components/ProductCard";
 import { motion } from "framer-motion";
+import type { Product } from "@/types/product";
 
 const FeaturedProducts = () => {
-  const featured = getFeaturedProducts();
+  const [featured, setFeatured] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const products = await getFeaturedProducts();
+        setFeatured(products);
+      } catch (error) {
+        console.error("[FeaturedProducts] Failed to load:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  if (loading) {
+    return (
+      <section className="py-20 lg:py-28 bg-secondary">
+        <div className="container mx-auto px-4 lg:px-8 text-center">
+          <div className="animate-pulse font-body text-sm text-muted-foreground">
+            Loading featured products...
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (featured.length === 0) return null;
 
   return (
     <section className="py-20 lg:py-28 bg-secondary">

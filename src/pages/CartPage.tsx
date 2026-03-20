@@ -1,11 +1,20 @@
 import { Link } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import { useCart } from "@/contexts/CartContext";
+import { useSettings } from "@/contexts/SettingsContext";
 import { Minus, Plus, X, ShoppingBag } from "lucide-react";
 import { motion } from "framer-motion";
 
 const CartPage = () => {
   const { items, updateQuantity, removeFromCart, subtotal } = useCart();
+  const { settings } = useSettings();
+
+  const shippingCost =
+    subtotal >= settings.freeShippingThreshold
+      ? 0
+      : settings.standardShippingCost;
+  const taxAmount = subtotal * (settings.taxRate / 100);
+  const total = subtotal + shippingCost + taxAmount;
 
   if (items.length === 0) {
     return (
@@ -69,8 +78,9 @@ const CartPage = () => {
                       </button>
                       <span className="font-body text-sm w-8 text-center text-foreground">{item.quantity}</span>
                       <button
-                        onClick={() => updateQuantity(item.product.id, item.size, item.quantity + 1)}
-                        className="p-2 text-muted-foreground hover:text-foreground"
+                        onClick={() => updateQuantity(item.product.id, item.size, Math.min(20, item.quantity + 1))}
+                        disabled={item.quantity >= 20}
+                        className="p-2 text-muted-foreground hover:text-foreground disabled:opacity-30"
                       >
                         <Plus size={14} />
                       </button>
@@ -94,14 +104,27 @@ const CartPage = () => {
               </div>
               <div className="flex justify-between font-body text-sm">
                 <span className="text-muted-foreground">Shipping</span>
-                <span className="text-foreground">{subtotal >= 150 ? "Free" : "$12.00"}</span>
+                <span className="text-foreground">
+                  {shippingCost === 0 ? "Free" : `$${shippingCost.toFixed(2)}`}
+                </span>
               </div>
+              {settings.taxRate > 0 && (
+                <div className="flex justify-between font-body text-sm">
+                  <span className="text-muted-foreground">Tax ({settings.taxRate}%)</span>
+                  <span className="text-foreground">${taxAmount.toFixed(2)}</span>
+                </div>
+              )}
+              {shippingCost > 0 && (
+                <p className="font-body text-xs text-muted-foreground/70 pt-1">
+                  Free shipping on orders over ${settings.freeShippingThreshold}
+                </p>
+              )}
             </div>
             <div className="border-t border-border pt-4 mb-8">
               <div className="flex justify-between font-body text-base">
                 <span className="text-foreground font-medium">Total</span>
                 <span className="text-foreground font-medium">
-                  ${(subtotal + (subtotal >= 150 ? 0 : 12)).toFixed(2)}
+                  ${total.toFixed(2)}
                 </span>
               </div>
             </div>

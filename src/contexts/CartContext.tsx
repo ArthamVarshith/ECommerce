@@ -1,4 +1,4 @@
-import React, {
+import {
   createContext,
   useContext,
   useState,
@@ -7,34 +7,26 @@ import React, {
 } from "react";
 
 import { Product, CartItem } from "@/types/product";
-import { products } from "@/data/products";
 import { useAuth } from "./AuthContext";
 import { toast } from "sonner";
 
-import { db } from "@/integrations/firebase/client";
 import {
-  collection,
-  getDocs,
-  query,
-  where,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-} from "firebase/firestore";
+  fetchCartItems,
+  addCartItem,
+  removeCartItem,
+  updateCartItemQuantity,
+  clearCartItems,
+} from "@/services/firebase/cartService";
 
 interface CartContextType {
   items: CartItem[];
   addToCart: (product: Product, size: string, quantity?: number) => void;
   removeFromCart: (productId: string, size: string) => void;
-  updateQuantity: (
-    productId: string,
-    size: string,
-    quantity: number
-  ) => void;
+  updateQuantity: (productId: string, size: string, quantity: number) => void;
   clearCart: () => void;
   totalItems: number;
   subtotal: number;
+  loading: boolean;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -42,127 +34,58 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 export const CartProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
   const [items, setItems] = useState<CartItem[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  /*
-  =====================================
-  LOAD CART
-  =====================================
-  */
   const loadCart = async () => {
     if (!user) {
       setItems([]);
       return;
     }
 
-    const cartRef = collection(db, "users", user.uid, "cart");
-    const snapshot = await getDocs(cartRef);
-
-    const merged: CartItem[] = snapshot.docs
-      .map((docSnap) => {
-        const data = docSnap.data();
-
-        const product = products.find(
-          (p) => p.id === data.productId
-        );
-
-        if (!product) return null;
-
-        return {
-          product,
-          size: data.size,
-          quantity: data.quantity,
-        };
-      })
-      .filter(Boolean) as CartItem[];
-
-    setItems(merged);
+    try {
+      setLoading(true);
+      const cartItems = await fetchCartItems(user.uid);
+      setItems(cartItems);
+    } catch (error) {
+      console.error("[CartContext] Failed to load cart:", error);
+      toast.error("Failed to load cart. Please refresh.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     loadCart();
   }, [user]);
 
-  /*
-  =====================================
-  ADD
-  =====================================
-  */
-  const addToCart = async (
-    product: Product,
-    size: string,
-    quantity = 1
-  ) => {
+  const addToCart = async (product: Product, size: string, quantity = 1) => {
     if (!user) {
-      toast.error("Login required");
+      toast.error("Please log in to add items to your cart.");
       return;
     }
 
-    const cartRef = collection(db, "users", user.uid, "cart");
-
-    const q = query(
-      cartRef,
-      where("productId", "==", product.id),
-      where("size", "==", size)
-    );
-
-    const snapshot = await getDocs(q);
-
-    if (!snapshot.empty) {
-      const existingDoc = snapshot.docs[0];
-      const existingData = existingDoc.data();
-
-      await updateDoc(existingDoc.ref, {
-        quantity: existingData.quantity + quantity,
-      });
-
-      toast.success("Updated cart");
-      loadCart();
-      return;
+    try {
+      await addCartItem(user.uid, product.id, size, quantity);
+      toast.success("Added to cart");
+      await loadCart();
+    } catch (error) {
+      console.error("[CartContext] Failed to add to cart:", error);
+      toast.error("Failed to add item. Please try again.");
     }
-
-    await addDoc(cartRef, {
-      productId: product.id,
-      size,
-      quantity,
-    });
-
-    toast.success("Added to cart");
-    loadCart();
   };
 
-  /*
-  =====================================
-  REMOVE
-  =====================================
-  */
-  const removeFromCart = async (
-    productId: string,
-    size: string
-  ) => {
+  const removeFromCart = async (productId: string, size: string) => {
     if (!user) return;
 
-    const cartRef = collection(db, "users", user.uid, "cart");
-
-    const q = query(
-      cartRef,
-      where("productId", "==", productId),
-      where("size", "==", size)
-    );
-
-    const snapshot = await getDocs(q);
-
-    snapshot.forEach(async (docSnap) => {
-      await deleteDoc(docSnap.ref);
-    });
-
-    loadCart();
+    try {
+      await removeCartItem(user.uid, productId, size);
+      await loadCart();
+    } catch (error) {
+      console.error("[CartContext] Failed to remove from cart:", error);
+      toast.error("Failed to remove item. Please try again.");
+    }
   };
 
-  /*
-  =====================================
-  UPDATE
-  =====================================
-  */
   const updateQuantity = async (
     productId: string,
     size: string,
@@ -171,54 +94,32 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     if (!user) return;
 
     if (quantity < 1) {
-      removeFromCart(productId, size);
+      await removeFromCart(productId, size);
       return;
     }
 
-    const cartRef = collection(db, "users", user.uid, "cart");
-
-    const q = query(
-      cartRef,
-      where("productId", "==", productId),
-      where("size", "==", size)
-    );
-
-    const snapshot = await getDocs(q);
-
-    snapshot.forEach(async (docSnap) => {
-      await updateDoc(docSnap.ref, { quantity });
-    });
-
-    loadCart();
+    try {
+      await updateCartItemQuantity(user.uid, productId, size, quantity);
+      await loadCart();
+    } catch (error) {
+      console.error("[CartContext] Failed to update quantity:", error);
+      toast.error("Failed to update quantity. Please try again.");
+    }
   };
 
-  /*
-  =====================================
-  CLEAR
-  =====================================
-  */
   const clearCart = async () => {
     if (!user) return;
 
-    const cartRef = collection(db, "users", user.uid, "cart");
-    const snapshot = await getDocs(cartRef);
-
-    snapshot.forEach(async (docSnap) => {
-      await deleteDoc(docSnap.ref);
-    });
-
-    setItems([]);
+    try {
+      await clearCartItems(user.uid);
+      setItems([]);
+    } catch (error) {
+      console.error("[CartContext] Failed to clear cart:", error);
+      toast.error("Failed to clear cart. Please try again.");
+    }
   };
 
-  /*
-  =====================================
-  TOTALS
-  =====================================
-  */
-  const totalItems = items.reduce(
-    (sum, i) => sum + i.quantity,
-    0
-  );
+  const totalItems = items.reduce((sum, i) => sum + i.quantity, 0);
 
   const subtotal = items.reduce(
     (sum, i) => sum + i.product.price * i.quantity,
@@ -235,6 +136,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         clearCart,
         totalItems,
         subtotal,
+        loading,
       }}
     >
       {children}
@@ -244,7 +146,6 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
 export const useCart = () => {
   const ctx = useContext(CartContext);
-  if (!ctx)
-    throw new Error("useCart must be inside CartProvider");
+  if (!ctx) throw new Error("useCart must be inside CartProvider");
   return ctx;
 };

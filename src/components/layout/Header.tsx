@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ShoppingBag, Search, Menu, X, Heart, User, LogOut } from "lucide-react";
+import { ShoppingBag, Search, Menu, X, Heart, User } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSettings } from "@/contexts/SettingsContext";
 import { motion, AnimatePresence } from "framer-motion";
 
 const Header = () => {
   const { totalItems } = useCart();
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
+  const { settings } = useSettings();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -58,7 +60,7 @@ const Header = () => {
 
             {/* Logo */}
             <Link to="/" className="font-display text-2xl lg:text-3xl font-semibold tracking-wider text-foreground">
-              ATELIER
+              {settings.siteName}
             </Link>
 
             {/* Actions */}
@@ -72,7 +74,7 @@ const Header = () => {
               </button>
               <Link
                 to="/wishlist"
-                className="hidden sm:block p-2 text-muted-foreground hover:text-foreground transition-colors"
+                className="p-2 text-muted-foreground hover:text-foreground transition-colors"
               >
                 <Heart size={20} />
               </Link>
@@ -85,13 +87,13 @@ const Header = () => {
                 )}
               </Link>
               {user ? (
-                <button
-                  onClick={() => signOut()}
+                <Link
+                  to="/profile"
                   className="p-2 text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label="Logout"
+                  aria-label="My Account"
                 >
-                  <LogOut size={20} />
-                </button>
+                  <User size={20} />
+                </Link>
               ) : (
                 <Link
                   to="/login"

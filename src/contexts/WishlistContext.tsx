@@ -7,16 +7,13 @@ import {
 } from "react";
 
 import { useAuth } from "./AuthContext";
-import { useToast } from "@/hooks/use-toast";
-import { db } from "@/integrations/firebase/client";
+import { toast } from "sonner";
+
 import {
-  collection,
-  getDocs,
-  query,
-  where,
-  addDoc,
-  deleteDoc,
-} from "firebase/firestore";
+  fetchWishlistIds,
+  addWishlistItem,
+  removeWishlistItem,
+} from "@/services/firebase/wishlistService";
 
 interface WishlistContextType {
   wishlistIds: string[];
@@ -39,16 +36,9 @@ export const WishlistProvider = ({
   children: ReactNode;
 }) => {
   const { user, initialized } = useAuth();
-  const { toast } = useToast();
-
   const [wishlistIds, setWishlistIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
-  /*
-  =====================================
-  LOAD WISHLIST
-  =====================================
-  */
   useEffect(() => {
     if (!initialized) return;
 
@@ -57,87 +47,53 @@ export const WishlistProvider = ({
       return;
     }
 
-    fetchWishlist();
+    loadWishlist();
   }, [user, initialized]);
 
-  const fetchWishlist = async () => {
+  const loadWishlist = async () => {
     if (!user) return;
 
-    setLoading(true);
-
-    const wishlistRef = collection(db, "users", user.uid, "wishlist");
-    const snapshot = await getDocs(wishlistRef);
-
-    const ids = snapshot.docs.map(
-      (docSnap) => docSnap.data().productId
-    );
-
-    setWishlistIds(ids);
-    setLoading(false);
+    try {
+      setLoading(true);
+      const ids = await fetchWishlistIds(user.uid);
+      setWishlistIds(ids);
+    } catch (error) {
+      console.error("[WishlistContext] Failed to load wishlist:", error);
+      toast.error("Failed to load wishlist.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  /*
-  =====================================
-  ADD
-  =====================================
-  */
   const addToWishlist = async (productId: string) => {
     if (!user) return;
 
-    const wishlistRef = collection(db, "users", user.uid, "wishlist");
-
-    await addDoc(wishlistRef, {
-      productId,
-    });
-
-    setWishlistIds((prev) => [...prev, productId]);
-
-    toast({
-      title: "Added to wishlist ❤️",
-    });
+    try {
+      await addWishlistItem(user.uid, productId);
+      setWishlistIds((prev) => [...prev, productId]);
+      toast.success("Added to wishlist ❤️");
+    } catch (error) {
+      console.error("[WishlistContext] Failed to add to wishlist:", error);
+      toast.error("Failed to add to wishlist.");
+    }
   };
 
-  /*
-  =====================================
-  REMOVE
-  =====================================
-  */
   const removeFromWishlist = async (productId: string) => {
     if (!user) return;
 
-    const wishlistRef = collection(db, "users", user.uid, "wishlist");
-
-    const q = query(
-      wishlistRef,
-      where("productId", "==", productId)
-    );
-
-    const snapshot = await getDocs(q);
-
-    snapshot.forEach(async (docSnap) => {
-      await deleteDoc(docSnap.ref);
-    });
-
-    setWishlistIds((prev) =>
-      prev.filter((id) => id !== productId)
-    );
-
-    toast({
-      title: "Removed from wishlist",
-    });
+    try {
+      await removeWishlistItem(user.uid, productId);
+      setWishlistIds((prev) => prev.filter((id) => id !== productId));
+      toast.success("Removed from wishlist");
+    } catch (error) {
+      console.error("[WishlistContext] Failed to remove from wishlist:", error);
+      toast.error("Failed to remove from wishlist.");
+    }
   };
 
-  /*
-  =====================================
-  TOGGLE
-  =====================================
-  */
   const toggleWishlist = async (productId: string) => {
     if (!user) {
-      toast({
-        title: "Please log in",
-        description: "Login required for wishlist",
-      });
+      toast.error("Please log in to use your wishlist.");
       return;
     }
 
